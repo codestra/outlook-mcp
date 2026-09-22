@@ -125,11 +125,12 @@ Add to your `.mcp.json`:
 | `authenticate` | Initiates OAuth flow with Microsoft |
 | `check-auth-status` | Checks current authentication state |
 
-### Calendar (9 tools)
+### Calendar (10 tools)
 
 | Tool | Description |
 |------|-------------|
-| `list-events` | Query calendar events with date range |
+| `list-calendars` | List all calendars in the mailbox, including calendars shared with you |
+| `list-events` | Query calendar events with date range; optional `calendar` (id or partial name) to read a shared or secondary calendar |
 | `create-event` | Create new event with attendees |
 | `update-event` | Modify event details |
 | `decline-event` | RSVP decline to an event |

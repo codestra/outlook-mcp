@@ -22,6 +22,7 @@ import {
 // Calendar tools
 import {
   listEventsSchema,
+  listCalendarsSchema,
   declineEventSchema,
   createEventSchema,
   updateEventSchema,
@@ -31,6 +32,7 @@ import {
   createCategorySchema,
   deleteCategorySchema,
   handleListEvents,
+  handleListCalendars,
   handleDeclineEvent,
   handleCreateEvent,
   handleUpdateEvent,
@@ -122,8 +124,17 @@ server.tool(
 // =============================================================================
 
 server.tool(
+  "list-calendars",
+  "Lists all calendars in the mailbox, including calendars shared with you, with their ids. Use a name or id from here as the 'calendar' argument of list-events.",
+  listCalendarsSchema.shape,
+  async () => {
+    return handleListCalendars();
+  }
+);
+
+server.tool(
   "list-events",
-  "Lists events from your calendar. By default shows upcoming events. Use startDate and endDate to query past events or a specific date range.",
+  "Lists events from your calendar. By default shows upcoming events from your default calendar. Use startDate and endDate to query past events or a specific date range, and 'calendar' (id or partial name from list-calendars) to read another or a shared calendar.",
   listEventsSchema.shape,
   async (args) => {
     return handleListEvents(args);

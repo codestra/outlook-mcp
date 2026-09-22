@@ -38,7 +38,15 @@ export const listEventsSchema = z.object({
     .describe(
       "End date for the query in ISO 8601 format (e.g., '2025-12-31'). If provided, returns events between startDate and endDate."
     ),
+  calendar: z
+    .string()
+    .optional()
+    .describe(
+      "Calendar to query: a calendar id or a (partial, case-insensitive) calendar name as returned by list-calendars, e.g. the name of a calendar shared with you. Defaults to your default calendar."
+    ),
 });
+
+export const listCalendarsSchema = z.object({});
 
 export const declineEventSchema = z.object({
   eventId: z.string().describe("The ID of the event to decline"),
@@ -93,6 +101,85 @@ export const deleteCategorySchema = z.object({
 // Handlers
 // =============================================================================
 
+// =============================================================================
+// Calendar resolution
+// =============================================================================
+
+interface CalendarInfo {
+  id: string;
+  name: string;
+  isDefaultCalendar?: boolean;
+  canEdit?: boolean;
+  owner?: { name?: string; address?: string } | null;
+}
+
+const CALENDAR_LIST_SELECT = "id,name,isDefaultCalendar,canEdit,owner";
+
+async function fetchCalendars(): Promise<CalendarInfo[]> {
+  const response = await graphGet<GraphAPIResponse<CalendarInfo>>("me/calendars", {
+    $select: CALENDAR_LIST_SELECT,
+    $top: 50,
+  });
+  return response.value || [];
+}
+
+/**
+ * Resolve a user-supplied calendar reference (id, exact name or partial name)
+ * to a Graph calendar id. Returns null when the reference is empty.
+ */
+async function resolveCalendarId(reference?: string): Promise<string | null> {
+  const ref = reference?.trim();
+  if (!ref) return null;
+
+  const calendars = await fetchCalendars();
+  const byId = calendars.find((c) => c.id === ref);
+  if (byId) return byId.id;
+
+  const lower = ref.toLowerCase();
+  const exact = calendars.filter((c) => c.name.toLowerCase() === lower);
+  const partial = exact.length ? exact : calendars.filter((c) => c.name.toLowerCase().includes(lower));
+
+  if (partial.length === 1) return partial[0].id;
+  if (partial.length === 0) {
+    throw new Error(
+      `No calendar matches "${ref}". Available: ${calendars.map((c) => c.name).join(", ")}`
+    );
+  }
+  throw new Error(
+    `Calendar reference "${ref}" is ambiguous: ${partial.map((c) => c.name).join(", ")}`
+  );
+}
+
+export async function handleListCalendars(): Promise<{ content: Array<{ type: "text"; text: string }> }> {
+  try {
+    const calendars = await fetchCalendars();
+    if (calendars.length === 0) {
+      return { content: [{ type: "text", text: "No calendars found." }] };
+    }
+    const list = calendars
+      .map((c, i) => {
+        const owner = c.owner?.address ? `${c.owner.name || ""} <${c.owner.address}>`.trim() : "shared / unknown";
+        const flags = [c.isDefaultCalendar ? "default" : null, c.canEdit ? "editable" : "read-only"]
+          .filter(Boolean)
+          .join(", ");
+        return `${i + 1}. ${c.name} (${flags})\nOwner: ${owner}\nID: ${c.id}`;
+      })
+      .join("\n\n");
+    return { content: [{ type: "text", text: `Found ${calendars.length} calendars:\n\n${list}` }] };
+  } catch (error) {
+    if (error instanceof Error && error.message === "Authentication required") {
+      return {
+        content: [{ type: "text", text: "Authentication required. Please use the 'authenticate' tool first." }],
+      };
+    }
+    return {
+      content: [
+        { type: "text", text: `Error listing calendars: ${error instanceof Error ? error.message : "Unknown error"}` },
+      ],
+    };
+  }
+}
+
 export async function handleListEvents(
   args: z.infer<typeof listEventsSchema>
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
@@ -110,7 +197,10 @@ export async function handleListEvents(
     const isPastQuery = endDate && endDate < new Date();
     const orderDirection = isPastQuery ? "desc" : "asc";
 
-    const response = await graphGet<GraphAPIResponse<CalendarEvent>>("me/calendarView", {
+    const calendarId = await resolveCalendarId(args.calendar);
+    const viewPath = calendarId ? `me/calendars/${calendarId}/calendarView` : "me/calendarView";
+
+    const response = await graphGet<GraphAPIResponse<CalendarEvent>>(viewPath, {
       startDateTime: queryStartDate,
       endDateTime: queryEndDate,
       $top: count,
@@ -120,7 +210,7 @@ export async function handleListEvents(
 
     if (!response.value || response.value.length === 0) {
       return {
-        content: [{ type: "text", text: "No calendar events found." }],
+        content: [{ type: "text", text: `No calendar events found${args.calendar ? ` in calendar "${args.calendar}"` : ""}.` }],
       };
     }
 
