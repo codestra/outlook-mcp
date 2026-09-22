@@ -1,6 +1,6 @@
 # Outlook MCP Server
 
-A TypeScript MCP server that connects Claude with Microsoft Outlook via the Microsoft Graph API. Features **23 tools** for managing emails, calendar events, folders, and inbox rules.
+A TypeScript MCP server that connects Claude with Microsoft Outlook via the Microsoft Graph API. Features **24 tools** for managing emails, calendar events, folders, and inbox rules.
 
 ## Features
 
